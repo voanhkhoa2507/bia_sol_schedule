@@ -1,8 +1,10 @@
-export type ScheduleItem = {
+export interface ScheduleItem {
   id: string;
   subject: string;
-  room: string;
-  startTime: string; // ISO string for the exact datetime
-  endTime: string;   // ISO string for the exact datetime
+  room?: string;
   colorIndex: number;
-};
+  startTime: string; // ISO String
+  endTime: string;   // ISO String
+  personId?: string;
+  seriesId?: string;
+}

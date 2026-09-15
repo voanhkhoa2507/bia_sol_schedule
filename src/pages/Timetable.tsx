@@ -27,6 +27,7 @@ export default function Timetable() {
   
   const [editingItem, setEditingItem] = useState<Partial<ScheduleItem> | null>(null);
   const [editSelectedWeeks, setEditSelectedWeeks] = useState<Date[]>([]);
+  const [updateSeries, setUpdateSeries] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Load Data from Firebase
@@ -70,6 +71,7 @@ export default function Timetable() {
       endTime: end.toISOString()
     });
     setEditSelectedWeeks([startOfWeek(date, { weekStartsOn: 1 })]);
+    setUpdateSeries(false);
   };
 
   const handleSave = async () => {
@@ -80,13 +82,39 @@ export default function Timetable() {
     
     try {
       if (editingItem.id) {
-        const itemRef = doc(db, 'schedules', editingItem.id);
-        await updateDoc(itemRef, editingItem);
+        if (updateSeries && editingItem.seriesId) {
+          const seriesItems = items.filter(i => i.seriesId === editingItem.seriesId);
+          const batch = writeBatch(db);
+          seriesItems.forEach(i => {
+            const weekStart = startOfWeek(parseISO(i.startTime), { weekStartsOn: 1 });
+            const baseStart = parseISO(editingItem.startTime!);
+            const baseEnd = parseISO(editingItem.endTime!);
+            const dayOffset = getDay(baseStart) === 0 ? 6 : getDay(baseStart) - 1;
+            const eventDate = addDays(weekStart, dayOffset);
+            
+            const start = setMinutes(setHours(eventDate, baseStart.getHours()), baseStart.getMinutes());
+            const end = setMinutes(setHours(eventDate, baseEnd.getHours()), baseEnd.getMinutes());
+            
+            const itemRef = doc(db, 'schedules', i.id);
+            batch.update(itemRef, {
+              subject: editingItem.subject,
+              room: editingItem.room,
+              colorIndex: editingItem.colorIndex,
+              startTime: start.toISOString(),
+              endTime: end.toISOString()
+            });
+          });
+          await batch.commit();
+        } else {
+          const itemRef = doc(db, 'schedules', editingItem.id);
+          await updateDoc(itemRef, editingItem);
+        }
       } else {
         const baseStart = parseISO(editingItem.startTime);
         const baseEnd = parseISO(editingItem.endTime);
         const dayOffset = getDay(baseStart) === 0 ? 6 : getDay(baseStart) - 1; // 0 is Sunday
         const weeksToApply = editSelectedWeeks.length > 0 ? editSelectedWeeks : [startOfWeek(baseStart, { weekStartsOn: 1 })];
+        const seriesId = `series-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         
         const batch = writeBatch(db);
         weeksToApply.forEach(weekStart => {
@@ -98,6 +126,7 @@ export default function Timetable() {
           batch.set(newDocRef, {
             ...editingItem,
             personId,
+            seriesId,
             startTime: start.toISOString(),
             endTime: end.toISOString()
           });
@@ -113,7 +142,16 @@ export default function Timetable() {
   const handleDelete = async () => {
     if (editingItem?.id) {
       try {
-        await deleteDoc(doc(db, 'schedules', editingItem.id));
+        if (updateSeries && editingItem.seriesId) {
+          const seriesItems = items.filter(i => i.seriesId === editingItem.seriesId);
+          const batch = writeBatch(db);
+          seriesItems.forEach(i => {
+            batch.delete(doc(db, 'schedules', i.id));
+          });
+          await batch.commit();
+        } else {
+          await deleteDoc(doc(db, 'schedules', editingItem.id));
+        }
       } catch (error) {
         console.error("Lỗi khi xóa:", error);
       }
@@ -138,6 +176,11 @@ export default function Timetable() {
     try {
       const batch = writeBatch(db);
       
+      const seriesIdMap = new Map<number, string>();
+      newItems.forEach((_, index) => {
+        seriesIdMap.set(index, `series-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      });
+
       selectedWeeks.forEach(weekStart => {
         newItems.forEach((item, index) => {
           const offsetDay = index % 5;
@@ -151,6 +194,7 @@ export default function Timetable() {
             room: item.room || '',
             colorIndex: item.colorIndex || 0,
             personId,
+            seriesId: seriesIdMap.get(index),
             startTime: start.toISOString(),
             endTime: end.toISOString()
           });
@@ -366,6 +410,19 @@ export default function Timetable() {
                         );
                       })}
                     </div>
+                  </div>
+                )}
+                {editingItem.id && editingItem.seriesId && (
+                  <div className="pt-4 border-t border-slate-100">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox"
+                        checked={updateSeries}
+                        onChange={(e) => setUpdateSeries(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                      />
+                      <span className="text-sm font-medium text-slate-700">Cập nhật (hoặc xóa) cho tất cả các tuần</span>
+                    </label>
                   </div>
                 )}
               </div>
