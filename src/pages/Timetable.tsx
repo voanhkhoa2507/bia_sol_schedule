@@ -23,6 +23,7 @@ export default function Timetable() {
   
   const [currentDate, setCurrentDate] = useState(new Date());
   const [items, setItems] = useState<ScheduleItem[]>([]);
+  const [profileName, setProfileName] = useState<string>('');
   
   const [editingItem, setEditingItem] = useState<Partial<ScheduleItem> | null>(null);
   const [editSelectedWeeks, setEditSelectedWeeks] = useState<Date[]>([]);
@@ -31,6 +32,15 @@ export default function Timetable() {
   // Load Data from Firebase
   useEffect(() => {
     if (!personId) return;
+    
+    // Fetch Profile Name
+    const docRef = doc(db, 'profiles', personId);
+    const unsubProfile = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setProfileName(docSnap.data().name);
+      }
+    });
+
     const q = query(collection(db, 'schedules'), where('personId', '==', personId));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
@@ -39,7 +49,10 @@ export default function Timetable() {
       })) as ScheduleItem[];
       setItems(data);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubProfile();
+    };
   }, [personId]);
 
   const handlePreviousWeek = () => setCurrentDate(prev => subWeeks(prev, 1));
@@ -181,7 +194,7 @@ export default function Timetable() {
               <ArrowLeft weight="bold" size={24} />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 capitalize">Lịch Trình: {personId}</h1>
+              <h1 className="text-2xl font-bold text-slate-900 capitalize">Lịch Trình: {profileName || '...'}</h1>
             </div>
           </div>
           

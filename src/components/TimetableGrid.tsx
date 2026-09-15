@@ -55,21 +55,22 @@ export function TimetableGrid({ currentDate, items, onItemClick, onEmptySlotClic
   };
 
   return (
-    <div className="flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-      {/* Header Row */}
-      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-slate-200 bg-slate-50 sticky top-0 z-20">
-        <div className="p-3 border-r border-slate-200 flex items-center justify-center text-sm font-medium text-slate-500">
-          Giờ
-        </div>
-        {weekDays.map(day => (
-          <div key={day.toISOString()} className="p-3 text-center border-r border-slate-200 last:border-0">
-            <div className="text-xs text-slate-500 uppercase tracking-wider">{format(day, 'EEEE', { locale: vi })}</div>
-            <div className={`text-lg font-semibold mt-1 ${isSameDay(day, new Date()) ? 'text-indigo-600' : 'text-slate-900'}`}>
-              {format(day, 'd/M')}
-            </div>
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+      <div className="min-w-[800px] flex flex-col">
+        {/* Header Row */}
+        <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-slate-200 bg-slate-50 sticky top-0 z-20">
+          <div className="p-3 border-r border-slate-200 flex items-center justify-center text-sm font-medium text-slate-500">
+            Giờ
           </div>
-        ))}
-      </div>
+          {weekDays.map(day => (
+            <div key={day.toISOString()} className="p-3 text-center border-r border-slate-200 last:border-0">
+              <div className="text-xs text-slate-500 uppercase tracking-wider">{format(day, 'EEEE', { locale: vi })}</div>
+              <div className={`text-lg font-semibold mt-1 ${isSameDay(day, new Date()) ? 'text-indigo-600' : 'text-slate-900'}`}>
+                {format(day, 'd/M')}
+              </div>
+            </div>
+          ))}
+        </div>
 
       {/* Grid Body */}
       <div className="relative grid grid-cols-[60px_repeat(7,1fr)]" style={{ height: '960px' /* 60px per hour * 16 hours */ }}>
@@ -138,6 +139,7 @@ export function TimetableGrid({ currentDate, items, onItemClick, onEmptySlotClic
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
