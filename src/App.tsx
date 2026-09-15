@@ -4,7 +4,7 @@ import Timetable from './pages/Timetable';
 
 function App() {
   return (
-    <Router>
+    <Router basename={import.meta.env.BASE_URL}>
       <div className="min-h-[100dvh] w-full font-sans text-slate-900 bg-slate-50">
         <Routes>
           <Route path="/" element={<Home />} />
