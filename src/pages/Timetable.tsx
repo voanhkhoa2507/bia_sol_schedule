@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format, addWeeks, subWeeks, parseISO, setHours, setMinutes, addMinutes, differenceInMinutes, addDays, startOfWeek, getDay } from 'date-fns';
 import { ArrowLeft, CaretLeft, CaretRight, Calendar, DownloadSimple } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import type { ScheduleItem } from '../types';
 import { TimetableGrid } from '../components/TimetableGrid';
 import { ImportModal } from '../components/ImportModal';
@@ -26,22 +28,18 @@ export default function Timetable() {
   const [editSelectedWeeks, setEditSelectedWeeks] = useState<Date[]>([]);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  // Load Mock Data
+  // Load Data from Firebase
   useEffect(() => {
-    if (personId === 'sol') {
-      const today = new Date();
-      // Add a mock item for today at 8:00 to 10:30
-      const d1Start = setMinutes(setHours(today, 8), 0).toISOString();
-      const d1End = setMinutes(setHours(today, 10), 30).toISOString();
-      
-      const d2Start = setMinutes(setHours(addDays(today, 1), 13), 0).toISOString();
-      const d2End = setMinutes(setHours(addDays(today, 1), 15), 0).toISOString();
-      
-      setItems([
-        { id: '1', subject: 'Thiết kế mạng', room: 'C401', colorIndex: 2, startTime: d1Start, endTime: d1End },
-        { id: '2', subject: 'Bảo mật máy tính', room: 'C602', colorIndex: 0, startTime: d2Start, endTime: d2End },
-      ]);
-    }
+    if (!personId) return;
+    const q = query(collection(db, 'schedules'), where('personId', '==', personId));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ScheduleItem[];
+      setItems(data);
+    });
+    return () => unsubscribe();
   }, [personId]);
 
   const handlePreviousWeek = () => setCurrentDate(prev => subWeeks(prev, 1));
@@ -61,83 +59,95 @@ export default function Timetable() {
     setEditSelectedWeeks([startOfWeek(date, { weekStartsOn: 1 })]);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingItem?.subject || !editingItem.startTime || !editingItem.endTime) {
       setEditingItem(null);
       return;
     }
     
-    if (editingItem.id) {
-      setItems(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...editingItem } as ScheduleItem : i));
-    } else {
-      const generatedItems: ScheduleItem[] = [];
-      const baseStart = parseISO(editingItem.startTime);
-      const baseEnd = parseISO(editingItem.endTime);
-      
-      const dayOffset = getDay(baseStart) === 0 ? 6 : getDay(baseStart) - 1; // 0 is Sunday
-      
-      const weeksToApply = editSelectedWeeks.length > 0 ? editSelectedWeeks : [startOfWeek(baseStart, { weekStartsOn: 1 })];
-      
-      weeksToApply.forEach(weekStart => {
-        const eventDate = addDays(weekStart, dayOffset);
-        const start = setMinutes(setHours(eventDate, baseStart.getHours()), baseStart.getMinutes());
-        const end = setMinutes(setHours(eventDate, baseEnd.getHours()), baseEnd.getMinutes());
+    try {
+      if (editingItem.id) {
+        const itemRef = doc(db, 'schedules', editingItem.id);
+        await updateDoc(itemRef, editingItem);
+      } else {
+        const baseStart = parseISO(editingItem.startTime);
+        const baseEnd = parseISO(editingItem.endTime);
+        const dayOffset = getDay(baseStart) === 0 ? 6 : getDay(baseStart) - 1; // 0 is Sunday
+        const weeksToApply = editSelectedWeeks.length > 0 ? editSelectedWeeks : [startOfWeek(baseStart, { weekStartsOn: 1 })];
         
-        generatedItems.push({
-          ...editingItem,
-          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          startTime: start.toISOString(),
-          endTime: end.toISOString()
-        } as ScheduleItem);
-      });
-      
-      setItems(prev => [...prev, ...generatedItems]);
+        const batch = writeBatch(db);
+        weeksToApply.forEach(weekStart => {
+          const eventDate = addDays(weekStart, dayOffset);
+          const start = setMinutes(setHours(eventDate, baseStart.getHours()), baseStart.getMinutes());
+          const end = setMinutes(setHours(eventDate, baseEnd.getHours()), baseEnd.getMinutes());
+          
+          const newDocRef = doc(collection(db, 'schedules'));
+          batch.set(newDocRef, {
+            ...editingItem,
+            personId,
+            startTime: start.toISOString(),
+            endTime: end.toISOString()
+          });
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu:", error);
     }
     setEditingItem(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (editingItem?.id) {
-      setItems(prev => prev.filter(i => i.id !== editingItem.id));
+      try {
+        await deleteDoc(doc(db, 'schedules', editingItem.id));
+      } catch (error) {
+        console.error("Lỗi khi xóa:", error);
+      }
     }
     setEditingItem(null);
   };
 
-  const handleItemMove = (item: ScheduleItem, newStartTime: Date) => {
+  const handleItemMove = async (item: ScheduleItem, newStartTime: Date) => {
     const duration = differenceInMinutes(parseISO(item.endTime), parseISO(item.startTime));
     const newEndTime = addMinutes(newStartTime, duration);
-    setItems(prev => prev.map(i => i.id === item.id ? {
-      ...i,
-      startTime: newStartTime.toISOString(),
-      endTime: newEndTime.toISOString()
-    } : i));
+    try {
+      await updateDoc(doc(db, 'schedules', item.id), {
+        startTime: newStartTime.toISOString(),
+        endTime: newEndTime.toISOString()
+      });
+    } catch (error) {
+      console.error("Lỗi khi chuyển giờ:", error);
+    }
   };
 
-  const handleImport = (newItems: Partial<ScheduleItem>[], selectedWeeks: Date[]) => {
-    // For each selected week, clone the new items to the correct days of that week
-    const generatedItems: ScheduleItem[] = [];
-    
-    selectedWeeks.forEach(weekStart => {
-      newItems.forEach((item, index) => {
-        // Mock logic: randomly place them on Monday/Tuesday of the selected week for demo
-        // A real parser would extract the exact day of week (e.g. 2 for Tuesday) and compute the date
-        const offsetDay = index % 5; // spreading them across Mon-Fri
-        const eventDate = addDays(weekStart, offsetDay);
-        const start = setMinutes(setHours(eventDate, 8 + (index * 2)), 0);
-        const end = addMinutes(start, 120);
-        
-        generatedItems.push({
-          id: `${Date.now()}-${weekStart.getTime()}-${index}`,
-          subject: item.subject || 'Imported',
-          room: item.room || '',
-          colorIndex: item.colorIndex || 0,
-          startTime: start.toISOString(),
-          endTime: end.toISOString()
+  const handleImport = async (newItems: Partial<ScheduleItem>[], selectedWeeks: Date[]) => {
+    try {
+      const batch = writeBatch(db);
+      
+      selectedWeeks.forEach(weekStart => {
+        newItems.forEach((item, index) => {
+          const offsetDay = index % 5;
+          const eventDate = addDays(weekStart, offsetDay);
+          const start = setMinutes(setHours(eventDate, 8 + (index * 2)), 0);
+          const end = addMinutes(start, 120);
+          
+          const newDocRef = doc(collection(db, 'schedules'));
+          batch.set(newDocRef, {
+            subject: item.subject || 'Imported',
+            room: item.room || '',
+            colorIndex: item.colorIndex || 0,
+            personId,
+            startTime: start.toISOString(),
+            endTime: end.toISOString()
+          });
         });
       });
-    });
-    
-    setItems(prev => [...prev, ...generatedItems]);
+      
+      await batch.commit();
+    } catch (error) {
+      console.error("Lỗi khi import:", error);
+    }
   };
 
   // Convert editing times for inputs
