@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format, addWeeks, subWeeks, parseISO, setHours, setMinutes, addMinutes, differenceInMinutes, addDays, startOfWeek, getDay } from 'date-fns';
 import { ArrowLeft, CaretLeft, CaretRight, Calendar, DownloadSimple } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { ScheduleItem } from '../types';
 import { TimetableGrid } from '../components/TimetableGrid';
